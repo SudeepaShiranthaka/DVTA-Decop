@@ -1,147 +1,86 @@
 // Decompiled with JetBrains decompiler
-// Type: DVTA.Login
+// Type: DVTA.Admin
 // Assembly: DVTA, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 // MVID: 6397275E-3082-406A-A289-EF4607C10E7B
 // Assembly location: C:\Users\SUDEEPA\Downloads\dvta_modified\Release\DVTA.exe
 
 using DBAccess;
-using Microsoft.Win32;
 using System;
 using System.ComponentModel;
 using System.Configuration;
-using System.Data.SqlClient;
-using System.Diagnostics;
+using System.Data;
 using System.Drawing;
+using System.IO;
+using System.Net;
+using System.Threading;
 using System.Windows.Forms;
 
 #nullable disable
 namespace DVTA
 {
-  public class Login : Form
+  public class Admin : Form
   {
+    private string ftpserver = ConfigurationManager.AppSettings["FTPSERVER"].ToString();
+    private string pathtodownload;
+    private string time;
     private IContainer components;
-    private Label lgnusername;
-    private TextBox txtLgnUsername;
-    private Label lgnpassword;
-    private TextBox txtLgnPass;
-    private Button btnlogin;
-    private Button btnregister;
-    private Label label3;
-    private Button configserver;
-    private TextBox servertext;
+    private Label label1;
+    private Button btnFtp;
+    private Label ftptext;
 
-    public Login()
-    {
-      this.InitializeComponent();
-      if (this.IsBeingDebugged())
-        Environment.Exit(1);
-      if (this.isServerConfigured())
-      {
-        int num = (int) MessageBox.Show("This application is usable only after configuring the server");
-      }
-      else
-        this.configserver.Enabled = false;
-    }
-
-    private bool isServerConfigured() => false;
-
-    private bool IsBeingDebugged() => Debugger.IsAttached;
+    public Admin() => this.InitializeComponent();
 
     private void label1_Click(object sender, EventArgs e)
     {
     }
 
-    private void btnLogin_Click(object sender, EventArgs e)
+    private void btnFtp_Click(object sender, EventArgs e)
     {
-      string clientusername = this.txtLgnUsername.Text.Trim();
-      string clientpassword = this.txtLgnPass.Text.Trim();
-      if (clientusername == string.Empty || clientpassword == string.Empty)
-      {
-        int num1 = (int) MessageBox.Show("Please enter all the fields!");
-      }
-      else
+      this.ftptext.Text = "Please wait while uploading your data";
+      new Thread((ThreadStart) (() =>
       {
         DBAccessClass dbAccessClass = new DBAccessClass();
         dbAccessClass.openConnection();
-        SqlDataReader sqlDataReader = dbAccessClass.checkLogin(clientusername, clientpassword);
-        if (sqlDataReader.HasRows)
+        DataTable expensesOfAll = dbAccessClass.getExpensesOfAll();
+        this.pathtodownload = Path.GetTempPath();
+        this.pathtodownload += "ftp-";
+        Console.WriteLine(this.pathtodownload);
+        string filePath = this.pathtodownload + "admin.csv";
+        expensesOfAll.WriteToCsvFile(filePath);
+        string str = this.pathtodownload + "admin.csv";
+        dbAccessClass.closeConnection();
+        Admin.Upload("ftp://" + this.ftpserver, "dvta", "p@ssw0rd", this.pathtodownload + "admin.csv");
+        Console.WriteLine(this.pathtodownload + "admin.csv");
+      })).Start();
+    }
+
+    private static void Upload(
+      string ftpServer,
+      string userName,
+      string password,
+      string filename)
+    {
+      using (WebClient webClient = new WebClient())
+      {
+        try
         {
-          int num2 = 0;
-          while (sqlDataReader.Read())
-          {
-            string str1 = sqlDataReader.GetString(1);
-            string str2 = sqlDataReader.GetString(2);
-            string str3 = sqlDataReader.GetString(3);
-            num2 = (int) sqlDataReader.GetValue(4);
-            if (str1 != "admin")
-            {
-              RegistryKey subKey = Registry.CurrentUser.CreateSubKey("dvta");
-              subKey.SetValue("username", (object) str1);
-              subKey.SetValue("password", (object) str2);
-              subKey.SetValue("email", (object) str3);
-              subKey.SetValue("isLoggedIn", (object) "true");
-              subKey.Close();
-            }
-          }
-          this.txtLgnUsername.Text = "";
-          this.txtLgnPass.Text = "";
-          if (num2 != 1)
-          {
-            this.Close();
-            int num3 = (int) new Main().ShowDialog();
-            Application.Exit();
-          }
-          else
-          {
-            this.Hide();
-            int num4 = (int) new Admin().ShowDialog();
-            Application.Exit();
-          }
+          webClient.Credentials = (ICredentials) new NetworkCredential(userName, password);
+          webClient.UploadFile(ftpServer + "/" + new FileInfo(filename).Name, "STOR", filename);
+          int num = (int) MessageBox.Show("Success");
         }
-        else
+        catch (Exception ex)
         {
-          int num5 = (int) MessageBox.Show("Invalid Login");
-          this.txtLgnUsername.Text = "";
-          this.txtLgnPass.Text = "";
-          dbAccessClass.closeConnection();
+          int num = (int) MessageBox.Show("Looks like this file already exists on the server");
+          Console.WriteLine((object) ex);
         }
       }
     }
 
-    private void textBox1_TextChanged(object sender, EventArgs e)
+    private void label2_Click(object sender, EventArgs e)
     {
     }
 
-    private void btnlgnregister(object sender, EventArgs e)
-    {
-      this.Hide();
-      int num = (int) new Register().ShowDialog();
-      Application.Exit();
-    }
-
-    private void Login_Load(object sender, EventArgs e)
-    {
-    }
-
-    private void button1_Click(object sender, EventArgs e)
-    {
-      string text = this.servertext.Text;
-      string str = text + "\\SQLEXPRESS";
-      System.Configuration.Configuration configuration = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
-      if (configuration.AppSettings.Settings["DBSERVER"] == null)
-        configuration.AppSettings.Settings.Add("DBSERVER", str);
-      else
-        configuration.AppSettings.Settings["DBSERVER"].Value = str;
-      if (configuration.AppSettings.Settings["FTPSERVER"] == null)
-        configuration.AppSettings.Settings.Add("FTPSERVER", text);
-      else
-        configuration.AppSettings.Settings["FTPSERVER"].Value = text;
-      configuration.Save(ConfigurationSaveMode.Modified);
-      this.servertext.Text = "";
-      int num = (int) MessageBox.Show("Server successfully configured");
-    }
-
-    private void textBox1_TextChanged_1(object sender, EventArgs e)
+    private void Admin_Load(object sender, EventArgs e)
     {
     }
 
@@ -154,93 +93,42 @@ namespace DVTA
 
     private void InitializeComponent()
     {
-      ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof (Login));
-      this.lgnusername = new Label();
-      this.txtLgnUsername = new TextBox();
-      this.lgnpassword = new Label();
-      this.txtLgnPass = new TextBox();
-      this.btnlogin = new Button();
-      this.btnregister = new Button();
-      this.label3 = new Label();
-      this.configserver = new Button();
-      this.servertext = new TextBox();
+      ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof (Admin));
+      this.label1 = new Label();
+      this.btnFtp = new Button();
+      this.ftptext = new Label();
       this.SuspendLayout();
-      this.lgnusername.AutoSize = true;
-      this.lgnusername.Location = new Point(133, 88);
-      this.lgnusername.Name = "lgnusername";
-      this.lgnusername.Size = new Size(55, 13);
-      this.lgnusername.TabIndex = 0;
-      this.lgnusername.Text = "Username";
-      this.lgnusername.Click += new EventHandler(this.label1_Click);
-      this.txtLgnUsername.Location = new Point(225, 88);
-      this.txtLgnUsername.Name = "txtLgnUsername";
-      this.txtLgnUsername.Size = new Size(154, 20);
-      this.txtLgnUsername.TabIndex = 1;
-      this.txtLgnUsername.TextChanged += new EventHandler(this.textBox1_TextChanged);
-      this.lgnpassword.AutoSize = true;
-      this.lgnpassword.Location = new Point(133, 135);
-      this.lgnpassword.Name = "lgnpassword";
-      this.lgnpassword.Size = new Size(53, 13);
-      this.lgnpassword.TabIndex = 2;
-      this.lgnpassword.Text = "Password";
-      this.txtLgnPass.Location = new Point(225, 135);
-      this.txtLgnPass.Name = "txtLgnPass";
-      this.txtLgnPass.Size = new Size(154, 20);
-      this.txtLgnPass.TabIndex = 3;
-      this.txtLgnPass.UseSystemPasswordChar = true;
-      this.btnlogin.Location = new Point(225, 206);
-      this.btnlogin.Name = "btnlogin";
-      this.btnlogin.Size = new Size(75, 23);
-      this.btnlogin.TabIndex = 4;
-      this.btnlogin.Text = nameof (Login);
-      this.btnlogin.UseVisualStyleBackColor = true;
-      this.btnlogin.Click += new EventHandler(this.btnLogin_Click);
-      this.btnregister.Location = new Point(134, 248);
-      this.btnregister.Name = "btnregister";
-      this.btnregister.Size = new Size(245, 23);
-      this.btnregister.TabIndex = 5;
-      this.btnregister.Text = "Dont have an account yet? Register Here";
-      this.btnregister.UseVisualStyleBackColor = true;
-      this.btnregister.Click += new EventHandler(this.btnlgnregister);
-      this.label3.AutoSize = true;
-      this.label3.ForeColor = SystemColors.Desktop;
-      this.label3.Location = new Point(222, 28);
-      this.label3.Name = "label3";
-      this.label3.Size = new Size(59, 13);
-      this.label3.TabIndex = 6;
-      this.label3.Text = "Login Here";
-      this.configserver.Enabled = false;
-      this.configserver.Location = new Point((int) byte.MaxValue, 363);
-      this.configserver.Name = "configserver";
-      this.configserver.Size = new Size(191, 23);
-      this.configserver.TabIndex = 7;
-      this.configserver.Text = "Configure Server";
-      this.configserver.UseVisualStyleBackColor = true;
-      this.configserver.Click += new EventHandler(this.button1_Click);
-      this.servertext.BackColor = SystemColors.ScrollBar;
-      this.servertext.Location = new Point(90, 364);
-      this.servertext.Name = "servertext";
-      this.servertext.Size = new Size(159, 20);
-      this.servertext.TabIndex = 8;
-      this.servertext.TextChanged += new EventHandler(this.textBox1_TextChanged_1);
+      this.label1.AutoSize = true;
+      this.label1.Location = new Point(174, 55);
+      this.label1.Name = "label1";
+      this.label1.Size = new Size(84, 13);
+      this.label1.TabIndex = 0;
+      this.label1.Text = "Welcome Admin";
+      this.label1.Click += new EventHandler(this.label1_Click);
+      this.btnFtp.Location = new Point(122, 125);
+      this.btnFtp.Name = "btnFtp";
+      this.btnFtp.Size = new Size(179, 23);
+      this.btnFtp.TabIndex = 1;
+      this.btnFtp.Text = "Backup Data to FTP Server";
+      this.btnFtp.UseVisualStyleBackColor = true;
+      this.btnFtp.Click += new EventHandler(this.btnFtp_Click);
+      this.ftptext.AutoSize = true;
+      this.ftptext.Location = new Point(119, 186);
+      this.ftptext.Name = "ftptext";
+      this.ftptext.Size = new Size(0, 13);
+      this.ftptext.TabIndex = 2;
+      this.ftptext.Click += new EventHandler(this.label2_Click);
       this.AutoScaleDimensions = new SizeF(6f, 13f);
       this.AutoScaleMode = AutoScaleMode.Font;
-      this.BackColor = SystemColors.ControlLight;
-      this.ClientSize = new Size(526, 399);
-      this.Controls.Add((Control) this.servertext);
-      this.Controls.Add((Control) this.configserver);
-      this.Controls.Add((Control) this.label3);
-      this.Controls.Add((Control) this.btnregister);
-      this.Controls.Add((Control) this.btnlogin);
-      this.Controls.Add((Control) this.txtLgnPass);
-      this.Controls.Add((Control) this.lgnpassword);
-      this.Controls.Add((Control) this.txtLgnUsername);
-      this.Controls.Add((Control) this.lgnusername);
+      this.ClientSize = new Size(410, 262);
+      this.Controls.Add((Control) this.ftptext);
+      this.Controls.Add((Control) this.btnFtp);
+      this.Controls.Add((Control) this.label1);
       this.Icon = (Icon) componentResourceManager.GetObject("$this.Icon");
-      this.Name = nameof (Login);
+      this.Name = nameof (Admin);
       this.StartPosition = FormStartPosition.CenterScreen;
-      this.Text = nameof (Login);
-      this.Load += new EventHandler(this.Login_Load);
+      this.Text = nameof (Admin);
+      this.Load += new EventHandler(this.Admin_Load);
       this.ResumeLayout(false);
       this.PerformLayout();
     }
